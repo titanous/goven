@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-var curgodir, imp string
+var curgodir, imp, dest string
 
 var (
 	copy    = flag.Bool("copy", true, "copy the code")
@@ -23,7 +23,7 @@ var (
 )
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "Usage: %s [FLAGS] <package>\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage: %s [FLAGS] <package>[ <dest>]\n", os.Args[0])
 	flag.PrintDefaults()
 }
 
@@ -32,11 +32,16 @@ func main() {
 
 	flag.Usage = usage
 	flag.Parse()
-	if flag.NArg() != 1 {
+	if flag.NArg() == 0 {
 		flag.Usage()
 		os.Exit(1)
 	}
 	imp = flag.Arg(0)
+	if flag.NArg() > 1 {
+		dest = flag.Arg(1)
+	} else {
+		dest = filepath.Base(imp)
+	}
 
 	pkgdir := which(imp)
 	if pkgdir == "" {
@@ -54,19 +59,19 @@ func main() {
 			log.Fatal(err)
 		}
 
-		err = os.MkdirAll(imp, 0770)
+		err = os.MkdirAll(dest, 0770)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		err = run("cp", "-r", pkgdir+"/", imp)
+		err = run("cp", "-r", pkgdir+"/", dest)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		scmdirs := []string{"/.git", "/.hg", "/.bzr"}
 		for _, scmdir := range scmdirs {
-			err = os.RemoveAll(imp + scmdir)
+			err = os.RemoveAll(dest + scmdir)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -79,7 +84,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		err = run("go", "fmt")
+		err = run("go", "fmt", "./"+dest+"/...")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -159,7 +164,7 @@ func mangleFile(path string) error {
 			return err // can't happen
 		}
 		if strings.HasPrefix(path, imp) {
-			s.Path.Value = strconv.Quote(curgodir + "/" + path)
+			s.Path.Value = strconv.Quote(curgodir + "/" + dest + path[len(imp):])
 			changed = true
 		}
 	}
