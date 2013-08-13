@@ -20,6 +20,7 @@ var curgodir, imp, dest string
 var (
 	copy    = flag.Bool("copy", true, "copy the code")
 	rewrite = flag.Bool("rewrite", true, "rewrite include paths")
+	commit  = flag.Bool("commit", true, "commit vendored package")
 )
 
 func usage() {
@@ -53,6 +54,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	var revision string
 	if *copy {
 		err = os.RemoveAll(imp)
 		if err != nil {
@@ -68,6 +70,8 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		revision = rev()
 
 		scmdirs := []string{"/.git", "/.hg", "/.bzr"}
 		for _, scmdir := range scmdirs {
@@ -89,6 +93,11 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+
+	if *commit {
+		run("git", "add", dest)
+		run("git", "commit", "-m", fmt.Sprintf("Vendor %s revision %s", imp, revision), "--", dest)
+	}
 }
 
 func which(pkg string) string {
@@ -104,6 +113,29 @@ func which(pkg string) string {
 		}
 	}
 	return ""
+}
+
+func rev() string {
+	if _, err := os.Stat(dest + "/.git"); err == nil {
+		return revCmd("git", "rev-parse", "--verify", "HEAD")[:8]
+	}
+	if _, err := os.Stat(dest + "/.hg"); err == nil {
+		return revCmd("hg", "id", "-i")[:8]
+	}
+	if _, err := os.Stat(dest + "/.bzr"); err == nil {
+		return revCmd("bzr", "revno")
+	}
+	return ""
+}
+
+func revCmd(name string, args ...string) string {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dest
+	res, err := cmd.Output()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return strings.TrimSpace(string(res))
 }
 
 func lookupDir() (string, error) {
