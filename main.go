@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -16,6 +17,7 @@ import (
 )
 
 var curgodir, imp, dest string
+var deps []string
 
 var (
 	copy    = flag.Bool("copy", true, "copy the code")
@@ -24,7 +26,7 @@ var (
 )
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "Usage: %s [FLAGS] <package>[ <dest>]\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage: %s [FLAGS] <package>\n", os.Args[0])
 	flag.PrintDefaults()
 }
 
@@ -33,16 +35,12 @@ func main() {
 
 	flag.Usage = usage
 	flag.Parse()
-	if flag.NArg() == 0 {
+	if flag.NArg() != 1 {
 		flag.Usage()
 		os.Exit(1)
 	}
 	imp = flag.Arg(0)
-	if flag.NArg() > 1 {
-		dest = flag.Arg(1)
-	} else {
-		dest = filepath.Base(imp)
-	}
+	dest = filepath.Base(imp)
 
 	pkgdir := which(imp)
 	if pkgdir == "" {
@@ -53,6 +51,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	depFile, err := ioutil.ReadFile("dependencies")
+	if err == nil {
+		deps = strings.Split(strings.TrimSpace(string(depFile)), "\n")
+	}
+	deps = append(deps, imp)
 
 	var revision string
 	if *copy {
@@ -88,7 +92,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		err = run("go", "fmt", "./"+dest+"/...")
+		err = run("go", "fmt", "./...")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -195,9 +199,11 @@ func mangleFile(path string) error {
 		if err != nil {
 			return err // can't happen
 		}
-		if strings.HasPrefix(path, imp) {
-			s.Path.Value = strconv.Quote(curgodir + "/" + dest + path[len(imp):])
-			changed = true
+		for _, dep := range deps {
+			if strings.HasPrefix(path, dep) {
+				s.Path.Value = strconv.Quote(curgodir + "/" + filepath.Base(dep) + path[len(dep):])
+				changed = true
+			}
 		}
 	}
 
